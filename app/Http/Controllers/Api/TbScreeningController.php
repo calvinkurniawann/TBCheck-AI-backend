@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\ScreeningHistory;
+use App\Services\AiAdviceService;
 
 class TbScreeningController extends Controller
 {
@@ -28,9 +30,17 @@ class TbScreeningController extends Controller
         'K04' => 0.4,
     ];
 
+    private AiAdviceService $aiService;
+
+    public function __construct(AiAdviceService $aiService)
+    {
+        $this->aiService = $aiService;
+    }
+
     public function calculateRisk(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'user_id' => 'required|integer',
             'selected_symptoms' => 'required|array',
             'selected_symptoms.*' => 'string'
         ]);
@@ -58,12 +68,23 @@ class TbScreeningController extends Controller
             $riskLevel = 'Sedang';
         }
 
+        $aiAdvice = $this->aiService->generateAdvice($riskLevel, $selectedSymptoms);
+
+        ScreeningHistory::create([
+            'user_id' => $validated['user_id'],
+            'selected_symptoms' => $selectedSymptoms,
+            'cf_score_raw' => $cfCombine,
+            'cf_score_percentage' => round($cfCombine * 100, 2),
+            'risk_level' => $riskLevel,
+        ]);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'cf_score_raw' => $cfCombine,
                 'cf_score_percentage' => round($cfCombine * 100, 2),
                 'risk_level' => $riskLevel,
+                'ai_advice' => $aiAdvice,
             ]
         ], 200);
     }
