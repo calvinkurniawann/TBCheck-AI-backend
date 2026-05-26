@@ -40,7 +40,6 @@ class TbScreeningController extends Controller
     public function calculateRisk(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'user_id' => 'required|integer',
             'selected_symptoms' => 'required|array',
             'selected_symptoms.*' => 'string'
         ]);
@@ -70,8 +69,9 @@ class TbScreeningController extends Controller
 
         $aiAdvice = $this->aiService->generateAdvice($riskLevel, $selectedSymptoms);
 
+        // Use authenticated user's ID
         ScreeningHistory::create([
-            'user_id' => $validated['user_id'],
+            'user_id' => $request->user()->id,
             'selected_symptoms' => $selectedSymptoms,
             'cf_score_raw' => $cfCombine,
             'cf_score_percentage' => round($cfCombine * 100, 2),
@@ -86,6 +86,28 @@ class TbScreeningController extends Controller
                 'risk_level' => $riskLevel,
                 'ai_advice' => $aiAdvice,
             ]
+        ], 200);
+    }
+
+    public function getHistory(Request $request): JsonResponse
+    {
+        // Use authenticated user's ID
+        $histories = ScreeningHistory::where('user_id', $request->user()->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $histories->map(function ($h) {
+                return [
+                    'id' => $h->id,
+                    'selected_symptoms' => $h->selected_symptoms,
+                    'cf_score_raw' => $h->cf_score_raw,
+                    'cf_score_percentage' => $h->cf_score_percentage,
+                    'risk_level' => $h->risk_level,
+                    'created_at' => $h->created_at->toIso8601String(),
+                ];
+            }),
         ], 200);
     }
 }
